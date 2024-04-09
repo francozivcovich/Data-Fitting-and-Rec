@@ -2,6 +2,7 @@ close all
 clear all
 clc
 
+format shorte 
 
 %
 % Description: we aim to implement a tool for computing the integrals
@@ -120,7 +121,7 @@ u = G \ b;
 % NB: in real life forget about backslash or inverting matrices without factoring
 % them, we are doing to just for learning.
 %
-% See also: 
+% See also:
 % https://it.mathworks.com/help/matlab/math/iterative-methods-for-linear-systems.html
 %
 
