@@ -19,7 +19,7 @@ b  = 5;
 
 % try different options here, I refer to lsq to the case Nx > Nt, interp when Nx = Nt
 % question: what happens when Nx < Nt??
-x_is = 'lsq_hardcoded_bad';%'double_linspace';
+x_is = 'double_linspace';%'double_linspace';
 switch x_is
   case 'test_interp'
     Nt = 5;
@@ -149,6 +149,10 @@ plot(  t,0 * t, 'x', 'Linewidth', 2, 'MarkerSize', 10 ), hold on % what's this s
 plot(  x, f(x), 'o', 'Linewidth', 2, 'MarkerSize', 10 ), hold on
 
 
+% % figure,
+% sp = spap2( augknt( t,2 ), 2, x, f( x ) );
+% fnplt( sp,'+k' )
+
 
 function y = eval_hats_in_element_k( x, k, mesh, B )
   % why is this so different from what you did in class?
@@ -158,6 +162,36 @@ function y = eval_hats_in_element_k( x, k, mesh, B )
   y = phi( B( k ) \ ( x - mesh.Points( mesh.ConnectivityList( k,1 ),: ) ) ); % what is this?
   y = y .* ( y >= 0 ) .* ( y <= 1 ); % why am I doing this?
 end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

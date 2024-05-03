@@ -44,6 +44,11 @@ coefs_c = ppc.coefs; % here I do this pp nonsense just to let you the opportunit
 ppn = cubicsplineequation( t, f( t ), 'natural_end', NaN, NaN, 1e14 );
 coefs_n = ppn.coefs; % here I do this pp nonsense just to let you the opportunity to see how would I interface with the mkpp, ppval, etc. Matlab routines
 
+% Approximation in $4 with (symmetrised) not-a-knot end conditions
+ppnak = cubicsplineequation( t, f( t ), 'not-a-knot' );
+coefs_nak = ppnak.coefs; % here I do this pp nonsense just to let you the opportunity to see how would I interface with the mkpp, ppval, etc. Matlab routines
+
+
 % Approximation in V4:
 % - dim( V4 ) = 2n
 % [
@@ -84,14 +89,24 @@ plot( xx,       f(             xx ), ':k', 'LineWidth',2 )
 hold on
 plot( xx, spleval( t, coefs_wc, xx ), '-.', ...
       xx, spleval( t, coefs_wn, xx ), '--', 'LineWidth',5 )
-legend('complete end continuous second derivative', 'natural end continuous second derivative', 'function to be approximated', 'complete_end weighted spline', 'natural_end weighted spline')
+hold on
+plot( xx, spleval( t, coefs_nak, xx ), '--', 'LineWidth',5 )
+legend('complete end continuous second derivative', 'natural end continuous second derivative', 'function to be approximated', 'complete end weighted spline', 'natural end weighted spline','not-a-knot $4 spline')
 
 
 
 % Here I show a chosen spline and its first two derivatives
 % Ideally, we want to observe that in $4 we have continuity of 1st and 2nd ders
 % while in V4 this is not granted.
-coeff = coefs_wc; % change this to see successive derivatives of the selected splines
+% If not-a-knot instead we want the same regularity of splines in $4 plus third
+% derivative continuity at 2nd and second last knots.
+coeff = coefs_nak; % change this to see successive derivatives of the selected splines
+
+figure,
+plot( xx, spleval( t, coeff(:,1) .* 6, xx ),  '.', 'LineWidth', 3   ),
+hold on
+plot( t,0*t,'o' )
+legend('Third derivative of my spline', 'Knots')
 
 figure,
 plot( xx, spleval( t, coeff(:,1:2) .* [ 6,2 ]  , xx ),  '.', 'LineWidth', 3   ),
@@ -176,6 +191,13 @@ end
 
 function pp = cubicsplineequation( t, y, end_condition, fpa, fpb, tgv )
 
+  if ( nargin < 4 ) || isempty( fpa )
+    fpa = NaN;
+  end
+  if ( nargin < 5 ) || isempty( fpb )
+    fpb = NaN;
+  end
+
   t = t(:);
   y = y(:);
 
@@ -203,7 +225,7 @@ function pp = cubicsplineequation( t, y, end_condition, fpa, fpb, tgv )
   % Compute RHS
   T = [ t( 1 ); t; t( Nt ) ]; % see slides
   Y = [ y( 1 ); y; y( Nt ) ];
-  rhs = diff( Y ) ./ diff( T ); % these are actually 1st divided differences right?
+  rhs = diff( Y ) ./ diff( T ); % these are actually 1st divided differences... right?
   rhs(   1 ) = fpa;
   rhs( end ) = fpb;
   rhs = 3 * diff( rhs );
@@ -223,6 +245,28 @@ function pp = cubicsplineequation( t, y, end_condition, fpa, fpb, tgv )
       G( end,end ) = 1;
     end
   end
+  if strcmp( end_condition, 'not-a-knot' )
+    G(   1,: ) = 0;
+    G( end,: ) = 0;
+    rhs(   1 ) = 0;
+    rhs( end ) = 0;
+    % unsymmetrical system for scared kids:
+    % G(   1,     1:3   ) = [ h(       2 ), - sum( h(    1:2  ) ), h(  1  ) ];
+    % G( end, end-2:end ) = [ h( end - 1 ), - sum( h(end-1:end) ), h( end ) ];
+    % how do we recover symmetricity? <- I'll be asking this at the exam
+    G(   1,     1:2   )  = [ diff( h(1:2).^2 ), 2 * h(1)^2 + 3 * prod( h(1:2) ) + h(2)^2 ];
+    G( end, end-1:end )  = [ 2 * h(end)^2 + 3 * prod( h(end-1:end) ) + h(end-1)^2, diff( h(end-1:end).^2 ) ];
+    rhs(   1 ) = 3 * h(   1 ) * rhs( 2 );
+    rhs( end ) = 3 * h( end ) * rhs( end-1 );
+
+    cf = h( 1 ) / ( 2 * h(1)^2 + 3 * prod( h(1:2) ) + h(2)^2 ) / 6;
+    G( 1,: ) = cf * G( 1,: );
+    rhs( 1 ) = cf * rhs( 1 );
+
+    cf = h( end ) / ( 2 * h(end)^2 + 3 * prod( h(end-1:end) ) + h(end-1)^2 ) / 6;
+    G( end,: ) = cf * G( end,: );
+    rhs( end ) = cf * rhs( end );
+  end
 
   % Solve ( 6 * G ) * c = rhs
   % we now behave as if it was nothing but in reality the system should be
@@ -231,7 +275,31 @@ function pp = cubicsplineequation( t, y, end_condition, fpa, fpb, tgv )
   % R = chol( G ); % this means G = R'*R -> inv( G ) = inv( R )* inv( R' )
   % C = R \ ( R' \ rhs ) / 6
   % for very large matrices use ichol instead and feed R, R' as preconditioners
-  C = ( 6 * G ) \ rhs; % remember: fpp = 2 * c
+  am_little_baby = true;
+  if am_little_baby
+    C = ( 6 * G ) \ rhs; % remember: fpp = 2 * c
+  else
+    tol = 1e-6;
+    maxit = 1e3;
+    matfun = @( x ) G * x; % not really needed to make use of matfun here but I wanted to introduce you to this
+    try
+      R = ichol( G ); % we behaved so G thanks us by being spd
+      % ( it pisses me off that one has to pay top schei for Matlab license and then
+      % it doesn't exists an implementation of a matrix-free incomplete Cholesky ).
+      [ C, flag, relres, iter ] = pcg( matfun, rhs / 6, tol, maxit, R, R' ); % next input would be initial guess but I don't have a particular suggestion
+    catch
+      % EXPLANATION:
+      % in the not-a-knot case for a coincidence the entries G(1,1) and G(end,end)
+      % are 0 and ichol panics (returning an error)
+      % I do not know a SIMPLE way out of this so I had to cheat by adding a
+      % negligible quantity
+      G(   1,  1 ) = sqrt( eps ) * h(  1); % so I wanted to put smthng small but not too small
+      G( end,end ) = sqrt( eps ) * h(end); % point is when you take LOTS of knots G's entries
+      % become small too so a way out is to take something small compare with the nearest h!
+      R = ichol( G ); % che fadiga eh? Just a day as any other in our job...
+      [ C, flag, relres, iter ] = pcg( matfun, rhs / 6, tol, maxit, R, R' ); % next input would be initial guess but I don't have a particular suggestion
+    end
+  end
   A = y;
   D = diff( 2 * C ) ./ ( 6 * h );
   B = diff( A ) ./ h - C(1:end-1) .* h - D .* h.^2;
